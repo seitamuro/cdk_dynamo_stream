@@ -10,20 +10,28 @@ export class CdkDynamodbStreamsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const streaming_function = new NodejsFunction(this, "streaming_function", {
-      entry: "lambda/streaming_function.ts",
-      handler: "handler",
-    });
-
     const table = new dynamodb.Table(this, "Table", {
       partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
+    const history_table = new dynamodb.Table(this, "HistoryTable", {
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
 
-    table.grantStreamRead(streaming_function);
+    const streamingFunction = new NodejsFunction(this, "streaming_function", {
+      entry: "lambda/streaming_function.ts",
+      handler: "handler",
+      environment: {
+        TABLE_NAME: history_table.tableName,
+      },
+    });
 
-    streaming_function.addEventSource(
+    table.grantStreamRead(streamingFunction);
+    history_table.grantWriteData(streamingFunction);
+
+    streamingFunction.addEventSource(
       new DynamoEventSource(table, {
         startingPosition: lambda.StartingPosition.TRIM_HORIZON,
       })
